@@ -1,5 +1,5 @@
 from types import FrameType, FunctionType, TracebackType
-from typing import cast, Any, Optional, Callable, Type, TextIO
+from typing import Any, Optional, Callable, Type, TextIO
 import inspect
 import warnings
 import traceback
@@ -15,10 +15,12 @@ class StackInspector:
         """Return the frame of the caller."""
 
         # Walk up the call tree until we leave the current class
-        frame = cast(FrameType, inspect.currentframe())
+        frame = inspect.currentframe()
+        assert frame
 
         while self.our_frame(frame):
-            frame = cast(FrameType, frame.f_back)
+            frame = frame.f_back
+            assert frame
 
         return frame
 
@@ -56,7 +58,7 @@ class StackInspector:
             if item and callable(item):
                 return frame, item
 
-            frame = cast(FrameType, frame.f_back)
+            frame = frame.f_back
 
         return None, None
 
@@ -78,10 +80,9 @@ class StackInspector:
 
         try:
             # Create new function from given code
-            generated_function = cast(Callable,
-                                      FunctionType(frame.f_code,
+            generated_function = FunctionType(frame.f_code,
                                                    globals=frame.f_globals,
-                                                   name=name))
+                                                   name=name)
         except TypeError:
             # Unsuitable code for creating a function
             # Last resort: Return some function
@@ -165,19 +166,13 @@ class Tracer(StackInspector):
         return self
 
     def __exit__(self, exc_tp: Type, exc_value: BaseException,
-                 exc_traceback: TracebackType) -> Optional[bool]:
+                 exc_traceback: TracebackType) -> bool:
         """
         Called at end of `with` block. Turn tracing off.
         Return `None` if ok, not `None` if internal error.
         """
         sys.settrace(self.original_trace_function)
-
-        # Note: we must return a non-True value here,
-        # such that we re-raise all exceptions
-        if self.is_internal_error(exc_tp, exc_value, exc_traceback):
-            return False  # internal error
-        else:
-            return None  # all ok
+        return False
 
     def changed_vars(self, new_vars: dict[str, Any]) -> dict[str, Any]:
         """Track changed variables, based on `new_vars` observed."""
@@ -236,7 +231,7 @@ class Debugger(Tracer):
         self.interact: bool = True
 
         self.frame: FrameType
-        self.event: Optional[str] = None
+        self.event: str = ""
         self.arg: Any = None
 
         self.local_vars: dict[str, Any] = {}
@@ -259,24 +254,12 @@ class Debugger(Tracer):
 
     def interaction_loop(self) -> None:
         """Interact with the user"""
-        self.print_debugger_status(self.frame, self.event, self.arg)  # type: ignore
+        self.print_debugger_status(self.frame, self.event, self.arg)
 
         self.interact = True
         while self.interact:
             command = input("(debugger) ")
-            self.execute(command)  # type: ignore
-
-    def step_command(self, arg: str = "") -> None:
-        """Execute up to the next line"""
-
-        self.stepping = True
-        self.interact = False
-
-    def continue_command(self, arg: str = "") -> None:
-        """Resume execution"""
-
-        self.stepping = False
-        self.interact = False
+            self.execute(command)
 
     def execute(self, command: str) -> None:
         """Execute `command`"""
@@ -336,6 +319,18 @@ class Debugger(Tracer):
 
         cmd = possible_cmds[0]
         return getattr(self, cmd + '_command')
+
+    def step_command(self, arg: str = "") -> None:
+        """Execute up to the next line"""
+
+        self.stepping = True
+        self.interact = False
+
+    def continue_command(self, arg: str = "") -> None:
+        """Resume execution"""
+
+        self.stepping = False
+        self.interact = False
 
     def print_command(self, arg: str = "") -> None:
         """Print an expression. If no expression is given, print all variables"""
