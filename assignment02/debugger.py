@@ -3,7 +3,7 @@ import sys
 import traceback
 import warnings
 from types import FrameType, FunctionType, TracebackType
-from typing import Any, Callable, Optional, TextIO, Type, TypeVar
+from typing import Any, Callable, Optional, TextIO, Type, TypeVar, Self
 
 AnyCallable = Callable[..., Any]
 BaseExceptionT = TypeVar("BaseExceptionT", bound=BaseException)
@@ -160,7 +160,7 @@ class Tracer(StackInspector):
         """
         print(*objects, sep=sep, end=end, file=self.file, flush=flush)
 
-    def __enter__(self) -> Any:
+    def __enter__(self: Self) -> Self:
         """Called at begin of `with` block. Turn tracing on."""
         self.original_trace_function = sys.gettrace()
         sys.settrace(self._traceit)
