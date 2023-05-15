@@ -16,6 +16,6 @@ def input(prompt: str) -> str:
 
 
 def next_inputs(to_add: Optional[Iterator[str]] = None) -> deque[str]:
-    if to_add:
+    if to_add is not None:
         INPUTS.extend(to_add)
     return INPUTS
