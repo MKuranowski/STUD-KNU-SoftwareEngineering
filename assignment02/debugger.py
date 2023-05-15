@@ -3,7 +3,9 @@ import sys
 import traceback
 import warnings
 from types import FrameType, FunctionType, TracebackType
-from typing import Any, Callable, Optional, TextIO, Type, TypeVar, Self
+from typing import Any, Callable, Optional, Self, TextIO, Type, TypeVar
+
+from utils import input
 
 AnyCallable = Callable[..., Any]
 BaseExceptionT = TypeVar("BaseExceptionT", bound=BaseException)
@@ -92,9 +94,7 @@ class StackInspector:
 
         except Exception as exc:
             # Any other exception
-            warnings.warn(
-                f"Couldn't create function for {name} ({type(exc).__name__}: {exc})"
-            )
+            warnings.warn(f"Couldn't create function for {name} ({type(exc).__name__}: {exc})")
             generated_function = self.unknown
 
         self._generated_function_cache[cache_key] = generated_function
