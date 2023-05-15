@@ -383,14 +383,14 @@ class Debugger(Tracer):
             line_number += 1
 
     def break_command(self, arg: str = "") -> None:
-        """Set a breakoint in given line. If no line is given, list all breakpoints"""
+        """Set a breakpoint in given line. If no line is given, list all breakpoints"""
 
         if arg:
             self.breakpoints.add(int(arg))
         self.log("Breakpoints:", self.breakpoints)
 
     def delete_command(self, arg: str = "") -> None:
-        """Delete breakoint in line given by `arg`.
+        """Delete breakpoint in line given by `arg`.
         Without given line, clear all breakpoints"""
 
         if arg:
