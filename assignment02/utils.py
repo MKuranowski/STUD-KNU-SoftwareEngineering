@@ -1,5 +1,5 @@
 from collections import deque
-from typing import Iterator, Optional
+from typing import Iterable, Optional
 
 INPUTS: deque[str] = deque()
 
@@ -15,7 +15,11 @@ def input(prompt: str) -> str:
         return original_input(prompt)
 
 
-def next_inputs(to_add: Optional[Iterator[str]] = None) -> deque[str]:
+def next_inputs(to_add: Optional[Iterable[str]] = None) -> deque[str]:
     if to_add is not None:
         INPUTS.extend(to_add)
     return INPUTS
+
+
+def clear_next_inputs() -> None:
+    INPUTS.clear()
