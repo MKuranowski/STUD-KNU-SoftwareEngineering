@@ -1,0 +1,6 @@
+PyYAML==6.0
+pyFLAC==2.1.0
+pytest==7.2.0
+numpy==1.24.2
+soundfile==0.12.1
+py7zr==0.20.4
