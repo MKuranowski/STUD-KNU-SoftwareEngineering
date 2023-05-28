@@ -12,7 +12,7 @@ K = [
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 ]
 
-def generate_hash(message: str | bytes | bytearray) -> bytearray:
+def generate_hash(message: bytearray) -> bytearray:
     """Return a SHA-256 hash from the message passed.
     The argument should be a bytes, bytearray, or
     string object."""

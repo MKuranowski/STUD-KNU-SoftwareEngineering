@@ -1,25 +1,30 @@
-from collections import deque
-from typing import Iterable, Optional
+from typing import List
 
-INPUTS: deque[str] = deque()
+INPUTS: List[str] = []
 
 original_input = input
 
-
 def input(prompt: str) -> str:
+    given_input = None
     try:
-        cached_input = INPUTS.popleft()
-        print(prompt, cached_input)
-        return cached_input
-    except IndexError:
-        return original_input(prompt)
+        global INPUTS
+        given_input = INPUTS[0]
+        INPUTS = INPUTS[1:]
+    except:
+        pass
 
+    if given_input:
+        print(f"{prompt} {given_input}")
+        return given_input
 
-def next_inputs(to_add: Optional[Iterable[str]] = None) -> deque[str]:
-    if to_add is not None:
-        INPUTS.extend(to_add)
+    return original_input(prompt)
+
+def next_inputs(list: List[str] = []) -> List[str]:
+    global INPUTS
+    INPUTS += list
     return INPUTS
 
-
-def clear_next_inputs() -> None:
-    INPUTS.clear()
+def clear_next_inputs():
+    global INPUTS
+    INPUTS = []
+    return INPUTS

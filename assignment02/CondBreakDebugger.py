@@ -1,12 +1,11 @@
-# This is a modified Debugger, with a conditional break implementation:
-# "break on this line only if a condition is met".
+from utils import next_inputs, input
 
 import inspect
 import sys
 import traceback
 import warnings
 from types import FrameType, FunctionType, TracebackType
-from typing import Any, Callable, Optional, Self, TextIO, Type, TypeVar
+from typing import Any, Callable, Optional, TextIO, Type, TypeVar
 
 from utils import input
 
@@ -163,7 +162,7 @@ class Tracer(StackInspector):
         """
         print(*objects, sep=sep, end=end, file=self.file, flush=flush)
 
-    def __enter__(self: Self) -> Self:
+    def __enter__(self: Any) -> Any:
         """Called at begin of `with` block. Turn tracing on."""
         self.original_trace_function = sys.gettrace()
         sys.settrace(self._traceit)
@@ -229,13 +228,13 @@ class Tracer(StackInspector):
             self.last_vars = {}  # Delete 'last' variables
 
 
-class Debugger(Tracer):
+class CondBreakDebugger(Tracer):
     """Interactive Debugger"""
 
     def __init__(self, *, file: TextIO = sys.stdout) -> None:
         """Create a new interactive debugger."""
         self.stepping: bool = True
-        self.breakpoints: dict[int, str] = {}
+        self.breakpoints: set[int | str] = set()
         self.interact: bool = True
 
         self.frame: FrameType
@@ -245,6 +244,25 @@ class Debugger(Tracer):
         self.local_vars: dict[str, Any] = {}
 
         super().__init__(file=file)
+
+    def eval_in_func(self, expr: str) -> Any:
+        try:
+            return eval(expr, self.local_vars, self.frame.f_globals)
+        except Exception:
+            return None
+
+    def eval_bool(self, expr: str) -> bool:
+        try:
+            return bool(self.eval_in_func(expr))
+        except NameError:
+            return False
+
+    @staticmethod
+    def line_no_or_expr(arg: str) -> str | int:
+        try:
+            return int(arg)
+        except ValueError:
+            return arg
 
     def traceit(self, frame: FrameType, event: str, arg: Any) -> None:
         """Tracing function; called at every line. To be overloaded in subclasses."""
@@ -261,11 +279,18 @@ class Debugger(Tracer):
         if self.stepping:
             return True
 
-        condition = self.breakpoints.get(self.frame.f_lineno, "False")
-        try:
-            return bool(eval(condition, self.local_vars, self.frame.f_globals))
-        except NameError:
-            return False  # If a break condition is not yet defined - don't break
+        for breakpoint in self.breakpoints:
+            if isinstance(breakpoint, int):
+                # Line number
+                if self.frame.f_lineno == breakpoint:
+                    return True
+
+            else:
+                # Expression
+                if self.eval_bool(breakpoint):
+                    return True
+
+        return False
 
     def interaction_loop(self) -> None:
         """Interact with the user"""
@@ -396,7 +421,7 @@ class Debugger(Tracer):
         """Set a breakpoint in given line. If no line is given, list all breakpoints"""
 
         if arg:
-            self.breakpoints[int(arg)] = "True"
+            self.breakpoints.add(self.line_no_or_expr(arg))
         self.log("Breakpoints:", self.breakpoints)
 
     def delete_command(self, arg: str = "") -> None:
@@ -405,17 +430,17 @@ class Debugger(Tracer):
 
         if arg:
             try:
-                del self.breakpoints[int(arg)]
+                self.breakpoints.remove(int(arg))
             except KeyError:
                 self.log(f"No such breakpoint: {arg}")
         else:
-            self.breakpoints = {}
+            self.breakpoints = set()
         self.log("Breakpoints:", self.breakpoints)
 
     def quit_command(self, arg: str = "") -> None:
         """Finish execution"""
 
-        self.breakpoints = {}
+        self.breakpoints = set()
         self.stepping = False
         self.interact = False
 
@@ -436,12 +461,26 @@ class Debugger(Tracer):
         except Exception as err:
             self.log(f"{err.__class__.__name__}: {err}")
 
-    def condbreak_command(self, arg: str) -> None:
-        """Set a condition breakpoint on a given line"""
-        line, _, condition = arg.partition(" ")
-        if line and condition:
-            self.breakpoints[int(line)] = condition
-            self.log("Breakpoints:", self.breakpoints)
-        else:
-            self.log("Usage: condbreak <LINE> <CONDITION_EXPRESSION>")
+    def set_command(self, arg: str) -> None:
+        """Alias for assign"""
+        self.assign_command(arg)
 
+    def attr_command(self, arg: str) -> None:
+        """Set an attribute on an object; usage: 'attr obj,attr_name,value'"""
+        parts = arg.split(",")
+        if len(parts) != 3:
+            self.log("Usage: attr obj_name,attr_name,value_expr")
+            return
+
+        obj_name = parts[0].strip()
+        attr_name = parts[1].strip()
+        value_expr = parts[2].strip()
+
+        if obj_name not in self.local_vars:
+            self.log("No such object:", obj_name)
+
+        setattr(
+            self.local_vars[obj_name],
+            attr_name,
+            self.eval_in_func(value_expr),
+        )
