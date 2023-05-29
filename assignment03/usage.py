@@ -26,4 +26,5 @@ with debugger:
 with debugger:
     assert remove_html_markup('"abc"') == '"abc"'
 
+print(debugger.event_table_text(args=True))
 debugger.pprint()
