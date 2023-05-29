@@ -4,6 +4,7 @@ import math
 import sys
 import traceback
 import warnings
+from colorsys import hls_to_rgb, rgb_to_yiq
 from types import FrameType, FunctionType, TracebackType
 from typing import Any, Callable, Optional, Self, TextIO, Type, TypeVar, Union
 
@@ -12,6 +13,32 @@ AnyType = Type[Any]
 BaseExceptionT = TypeVar("BaseExceptionT", bound=BaseException)
 Location = tuple[AnyCallable, int]
 Coverage = set[Location]
+
+# Terminal colors
+
+Color = tuple[int, int, int]
+
+
+def text_color(c: Color) -> Color:
+    r, g, b = c
+    y, _, _ = rgb_to_yiq(r/255, g/255, b/255)
+    return (0, 0, 0) if y > 0.5 else (255, 255, 255)
+
+
+TERM_RESET_SEQUENCE = "\x1B[0m"
+
+
+def term_color_sequence(c: Color, *, background: bool = True) -> str:
+    r, g, b = c
+    assert 0 <= r <= 255
+    assert 0 <= g <= 255
+    assert 0 <= b <= 255
+    # https://en.wikipedia.org/wiki/ANSI_escape_code
+    sgr = "48" if background else "38"
+    return f"\x1B[{sgr};2;{r};{g};{b}m"
+
+
+# Implementation
 
 
 class StackInspector:
@@ -467,6 +494,9 @@ class StatisticalDebugger:
         """
         return None
 
+    def rgb_color(self, event: Any) -> Color:
+        return 255, 255, 255
+
     def tooltip(self, event: Any) -> Optional[str]:
         """
         Return a tooltip string for the given event, or None.
@@ -662,13 +692,17 @@ class SpectrumDebugger(DifferenceDebugger):
         color: bool = False,
         suspiciousness: bool = False,
         line_numbers: bool = True,
+        term_color: bool = False,
     ) -> str:
         """
         Return a listing of `functions` (default: covered functions).
         If `color` is True, render as HTML, using suspiciousness colors.
         If `suspiciousness` is True, include suspiciousness values.
         If `line_numbers` is True (default), include line numbers.
+        If `term_color` is True, add ANSI escape sequences for suspiciousness colors.
+        `term_color` and `color` are mutually exclusive.
         """
+        assert not (color and term_color)
 
         if not functions:
             functions = self.covered_functions()
@@ -714,6 +748,8 @@ class SpectrumDebugger(DifferenceDebugger):
                     title="{tooltip}">{line.rstrip()}</pre>"""
                 elif color:
                     line = f'<pre title="{tooltip}">{line}</pre>'
+                elif term_color:
+                    line = term_color_sequence(self.rgb_color(location)) + line.rstrip() + TERM_RESET_SEQUENCE
                 else:
                     line = line.rstrip()
 
@@ -733,6 +769,9 @@ class SpectrumDebugger(DifferenceDebugger):
     def __repr__(self) -> str:
         """Show code as string"""
         return self.code(color=False, suspiciousness=True)
+
+    def pprint(self) -> None:
+        print(self.code(suspiciousness=True, term_color=True))
 
 
 class DiscreteSpectrumDebugger(SpectrumDebugger):
@@ -769,6 +808,18 @@ class DiscreteSpectrumDebugger(SpectrumDebugger):
             return "lightyellow"
 
         return "honeydew"
+
+    def rgb_color(self, event: Any) -> Color:
+        suspiciousness = self.suspiciousness(event)
+        if suspiciousness is None:
+            return 255, 255, 255
+
+        if suspiciousness > 0.8:
+            return 255, 228, 225
+        if suspiciousness >= 0.5:
+            return 248, 222, 126
+
+        return 240, 255, 240
 
     def tooltip(self, event: Any) -> str:
         """Return a tooltip for the given event."""
@@ -856,6 +907,17 @@ class ContinuousSpectrumDebugger(DiscreteSpectrumDebugger):
         # HSL color values are specified with:
         # hsl(hue, saturation, lightness).
         return f"hsl({hue * 120}, {saturation * 100}%, 80%)"
+
+    def rgb_color(self, event: Any) -> Color:
+        h = self.hue(event)
+        if h is None:
+            return 255, 255, 255
+        h /= 3.0  # linear interpolate green (1.0) to 0.333 hue (120%)
+        l = 0.8
+        s = self.brightness(event)
+
+        r, g, b = hls_to_rgb(h, l, s)
+        return round(r * 255), round(g * 255), round(b * 255)
 
 
 class RankingDebugger(DiscreteSpectrumDebugger):
