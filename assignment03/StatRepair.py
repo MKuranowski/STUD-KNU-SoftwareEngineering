@@ -5,8 +5,9 @@ import sys
 import traceback
 import warnings
 from colorsys import hls_to_rgb, rgb_to_yiq
+from operator import itemgetter
 from types import FrameType, FunctionType, TracebackType
-from typing import Any, Callable, Optional, Self, TextIO, Type, TypeVar, Union
+from typing import Any, Callable, Iterator, Optional, TextIO, Type, TypeVar, Union
 
 AnyCallable = Callable[..., Any]
 AnyType = Type[Any]
@@ -21,7 +22,7 @@ Color = tuple[int, int, int]
 
 def text_color(c: Color) -> Color:
     r, g, b = c
-    y, _, _ = rgb_to_yiq(r/255, g/255, b/255)
+    y, _, _ = rgb_to_yiq(r / 255, g / 255, b / 255)
     return (0, 0, 0) if y > 0.5 else (255, 255, 255)
 
 
@@ -189,7 +190,7 @@ class Tracer(StackInspector):
         """
         print(*objects, sep=sep, end=end, file=self.file, flush=flush)
 
-    def __enter__(self: Self) -> Self:
+    def __enter__(self: Any) -> Any:
         """Called at begin of `with` block. Turn tracing on."""
         self.original_trace_function = sys.gettrace()
         sys.settrace(self._traceit)
@@ -749,7 +750,11 @@ class SpectrumDebugger(DifferenceDebugger):
                 elif color:
                     line = f'<pre title="{tooltip}">{line}</pre>'
                 elif term_color:
-                    line = term_color_sequence(self.rgb_color(location)) + line.rstrip() + TERM_RESET_SEQUENCE
+                    line = (
+                        term_color_sequence(self.rgb_color(location))
+                        + line.rstrip()
+                        + TERM_RESET_SEQUENCE
+                    )
                 else:
                     line = line.rstrip()
 
@@ -963,3 +968,74 @@ class OchiaiDebugger(ContinuousSpectrumDebugger, RankingDebugger):
         if suspiciousness is None:
             return None
         return 1 - suspiciousness
+
+
+class StatRepair(ContinuousSpectrumDebugger, RankingDebugger):
+    def suspiciousness(self, event: Any) -> Optional[float]:
+        failed = len(self.collectors_with_event(event, self.FAIL))
+        not_in_failed = len(self.collectors_without_event(event, self.FAIL))
+        not_in_passed = len(self.collectors_without_event(event, self.PASS))
+        passed = len(self.collectors_with_event(event, self.PASS))
+
+        try:
+            # return failed / math.sqrt((failed + not_in_failed) * (failed + passed))
+            return 2 * (failed + (not_in_passed / (passed + not_in_passed)))
+        except ZeroDivisionError:
+            return None
+
+    def statement_at(self, loc: tuple[str, int]) -> str:
+        func_name, line = loc
+        for func in self.covered_functions():
+            if func.__name__ == func_name:
+                lines, start = inspect.getsourcelines(func)
+                delta = line - start
+                if delta < len(lines):
+                    return lines[delta].strip()
+        return ""
+
+    def covered_statements_of(self, func: AnyCallable, coverage: Coverage) -> Iterator[str]:
+        try:
+            lines, func_start = inspect.getsourcelines(func)
+        except OSError:
+            return
+
+        yield from (
+            statement.strip()
+            for line_no, statement in enumerate(lines, func_start)
+            if (func, line_no) in coverage
+        )
+
+    def statement_and_its_distance(self, target: str, statement: str) -> tuple[str, int]:
+        dist = levenshtein_distance(statement, target)
+        return statement, (dist if dist > 0 else math.inf)  # type: ignore
+
+    def mostsimilarstmt(self, targetloc: tuple[str, int]) -> tuple[str, int]:
+        target_statement = self.statement_at(targetloc)
+        coverage = self.coverage()
+        return min(
+            (
+                self.statement_and_its_distance(target_statement, statement)
+                for func in self.covered_functions()
+                for statement in self.covered_statements_of(func, coverage)
+            ),
+            key=lambda i: (i[1], i[0]),
+        )
+
+
+def levenshtein_distance(s1: str, s2: str) -> int:
+    # https://rosettacode.org/wiki/Levenshtein_distance#Iterative_2
+    if len(s1) > len(s2):
+        s1, s2 = s2, s1
+
+    distances = range(len(s1) + 1)
+    for index2, char2 in enumerate(s2):
+        newDistances = [index2 + 1]
+        for index1, char1 in enumerate(s1):
+            if char1 == char2:
+                newDistances.append(distances[index1])
+            else:
+                newDistances.append(
+                    1 + min((distances[index1], distances[index1 + 1], newDistances[-1]))
+                )
+        distances = newDistances
+    return distances[-1]
