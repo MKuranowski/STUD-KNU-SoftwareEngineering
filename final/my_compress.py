@@ -609,7 +609,7 @@ class _Unpickler:
     def load_binunicode(self):
         length = mloads(b'i' + self.read(4))
         token = str(self.read(length), 'utf-8', 'surrogatepass')
-        self.append(token if len(token) != 3 else token[:2])
+        self.append(token)
     dispatch[BINUNICODE[0]] = load_binunicode
     def load_short_binstring(self):
         len = ord(self.read(1))
